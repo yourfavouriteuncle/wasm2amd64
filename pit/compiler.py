@@ -1,4 +1,7 @@
 import numpy as np
+import logging
+
+log = logging.getLogger(__name__)
 
 END = '0b'
 LF = '0a'
@@ -10,13 +13,39 @@ GLOBAL_SECTION = '06'
 EXPORT_SECTION = '07'
 CODE_SECTION = '0a'
 INT32 = '7f'
+
+# expressions
+INT32_MUL = '6c'
 INT32_CONST = '41'
+FUNC_CALL = '10'
+
 MUT_CONST = '' # 00
 
 FUNC_TYPE_MAGIC = '60'
 
 FUNC_ID = '' # 00
 GLOB_ID = '03' # 00
+
+LOOKUP = {
+    'functions': [],
+    'exports': [],
+    'globals': [],
+    'types': [],
+}
+
+
+def log_lookup():
+    log.info('---')
+    log.info('Compiler Lookup Table:')
+    for (k, v) in LOOKUP.items():
+        log.info(k + '\t: ' + str(v))
+    log.info('---')
+
+
+def get_register(num):
+    order = ('rdi', 'rsi', 'rdx', 'rcx')
+    assert num < len(order)
+    return order[num]
 
 
 def verify_header(bytes):
@@ -90,7 +119,6 @@ def parse_section(bytes):
     section_id = bytes[0].hex()
     offset = 1
 
-    import ipdb; ipdb.set_trace()
     if section_id == GLOBAL_SECTION:
         section_parser = parse_global_section
     elif section_id == EXPORT_SECTION:
@@ -101,9 +129,6 @@ def parse_section(bytes):
         section_parser = parse_func_section
     elif section_id == CODE_SECTION:
         section_parser = parse_code_section
-    elif section_id == LF:
-        print('NEW LINE, could be wrong!')
-        return [], offset
     else:
         import ipdb; ipdb.set_trace()
         raise NotImplementedError('sect not glob')
@@ -114,7 +139,76 @@ def parse_section(bytes):
     return asm, offset
 
 
+def parse_expression(bytes, values, calls):
+    offset = 0
+
+    expr_type = bytes[offset].hex()
+    offset += 1
+
+    if expr_type == FUNC_CALL:
+        raise NotImplementedError('no func call')
+    elif expr_type == INT32_CONST:
+        value, read = parse_int(bytes[offset:])
+        offset += read
+        asm = ['immediate', get_register(calls), value]
+
+        return asm, offset
+    elif expr_type == INT32_MUL:
+        asm = ['imul', 'rdi', 'rsi']
+
+        return asm, offset
+    else:
+        import ipdb; ipdb.set_trace()
+        raise NotImplementedError('unknown')
+
+
+def parse_code(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    loclen, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = []
+    values = []
+
+    for _ in range(loclen):
+        value, read = parse_val_type(bytes[offset:])
+        offset += read
+        values.append(value)
+
+    calls = 0
+
+    while bytes[offset].hex() != END:
+        ir, read = parse_expression(bytes[offset:], values, calls)
+        offset += read
+        asm.append(ir)
+        calls += 1
+
+    offset += 1
+
+    return asm, offset
+
+
 def parse_code_section(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    len, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = []
+
+    for _ in range(len):
+        code, read = parse_code(bytes[offset:])
+        offset += read
+        asm.extend(code)
+        
+    return asm, offset
 
 
 def parse_func_section(bytes):
@@ -126,15 +220,13 @@ def parse_func_section(bytes):
     len, o2 = parse_uint(bytes[offset:])
     offset += o2
 
-    asm = ['section', 'functions']
-    funcs = []
+    asm = []
 
     for _ in range(len):
         type_id, read = parse_uint(bytes[offset:])
-        funcs.append(type_id)
+        LOOKUP['functions'].append(type_id)
         offset += read
 
-    asm.append(funcs)
     return asm, offset
 
 
@@ -161,7 +253,6 @@ def parse_result_type(bytes):
     return res, offset
 
 
-
 def parse_func_type(bytes):
     offset = 0
 
@@ -178,7 +269,6 @@ def parse_func_type(bytes):
     return [args, res], offset
 
 
-
 def parse_type_section(bytes):
     offset = 0
 
@@ -188,17 +278,14 @@ def parse_type_section(bytes):
     len, o2 = parse_uint(bytes[offset:])
     offset += o2
 
-    asm = ['section', 'types']
-    sigs = []
+    asm = []
 
     for _ in range(len):
         sig, read = parse_func_type(bytes[offset:])
-        sigs.append(sig)
+        LOOKUP['types'].append(sig)
         offset += read
 
-    asm.append(sigs)
     return asm, offset
-
 
 
 def parse_export(bytes):
@@ -223,7 +310,6 @@ def parse_export(bytes):
     return (name.decode(), desc, str(ref)), offset
 
 
-
 def parse_export_section(bytes):
     offset = 0
 
@@ -233,13 +319,12 @@ def parse_export_section(bytes):
     len, o2 = parse_uint(bytes[offset:])
     offset += o2
 
-    asm = ['section', 'exports']
+    asm = []
 
     for _ in range(len):
         # don't need the export right now
         (name, desc, ref), read = parse_export(bytes[offset:])
-        # name: GLOBALS[pointer]
-        asm.append([name, desc, ref])
+        LOOKUP['exports'].append([name, desc, ref])
         offset += read
 
     return asm, offset
@@ -254,15 +339,13 @@ def parse_global_section(bytes):
     len, o2 = parse_uint(bytes[offset:])
     offset += o2
 
-    asm = ['section', 'globals']
-    globals = []
+    asm = []
 
     for i in range(len):
         value, read = parse_global(bytes[offset:])
-        globals.append(value)
+        LOOKUP['globals'].append(value)
         offset += read
 
-    asm.append(globals)
     return asm, offset
 
 
@@ -308,22 +391,24 @@ def wasm_compiler(bytecode):
     data = bytecode[8:]
 
     ir = []
-    #ir.append(["immediate", "rax", 5])
-    #ir.append(["push", "rax", None])
-    #ir.append(["pop", "rax", None])
 
     while len(data):
         if res := parse_section(data):
 
             # don't append empty list
             if res[0]:
-                ir.append(res[0])
+                for instr in res[0]:
+                    ir.append(instr)
 
             data = data[res[1]:]
             continue
 
+        if len(data) == 1 and data[0].hex() == LF:
+            break
+
     # add ret at the end of execution
     ir.append(["ret", None, None])
+    log_lookup()
 
     return ir
 
