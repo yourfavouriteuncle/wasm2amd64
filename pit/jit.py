@@ -60,14 +60,11 @@ def to_native(bytecode):
     memory.make_executable(asm.block, asm.size)
 
     argcount = 1
+    args = [ctypes.c_int32] * argcount
 
-    if argcount:
-        # Assume all arguments are 64-bit
-        signature = ctypes.CFUNCTYPE(*([ctypes.c_uint64] * argcount))
-    else:
-        signature = ctypes.CFUNCTYPE(None)
+    signature = ctypes.CFUNCTYPE(*args)
+    signature.restype = ctypes.c_int32
 
-    signature.restype = ctypes.c_uint64
     native = signature(asm.address) 
     native.raw = asm.raw
     native.address = asm.address
@@ -83,7 +80,7 @@ def jit(ast):
     log.info('---')
 
     log.info(f'execution starting')
-    result = native(6)
+    result = native()
     log.info(f'execution finished: {result}')
 
     log.info('---')

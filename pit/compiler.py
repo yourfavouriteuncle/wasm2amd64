@@ -150,11 +150,18 @@ def parse_expression(bytes, values, calls):
     elif expr_type == INT32_CONST:
         value, read = parse_int(bytes[offset:])
         offset += read
-        asm = ['immediate', get_register(calls), value]
+        asm = []
+        reg = get_register(calls)
+        asm.append(['immediate', 'rax', value])
+        asm.append(['push', 'rax', None])
 
         return asm, offset
     elif expr_type == INT32_MUL:
-        asm = ['imul', 'rdi', 'rsi']
+        asm = []
+        asm.append(['pop', 'rax', None])
+        asm.append(['pop', 'rbx', None])
+        asm.append(['imul', 'rax', 'rbx'])
+        asm.append(['push', 'rax', None])
 
         return asm, offset
     else:
@@ -184,7 +191,7 @@ def parse_code(bytes):
     while bytes[offset].hex() != END:
         ir, read = parse_expression(bytes[offset:], values, calls)
         offset += read
-        asm.append(ir)
+        asm.extend(ir)
         calls += 1
 
     offset += 1
@@ -407,7 +414,8 @@ def wasm_compiler(bytecode):
             break
 
     # add ret at the end of execution
-    ir.append(["ret", None, None])
+    ir.append(['pop', 'rax', None])
+    ir.append(['ret', None, None])
     log_lookup()
 
     return ir
