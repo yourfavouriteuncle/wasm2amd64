@@ -1,7 +1,7 @@
-def optimize(ir):
+def peephole(ir):
     """Performs peephole optimizations on the IR."""
     def fetch(n):
-        if n < len(ir):
+        if len(ir) > n:
             return ir[n]
         else:
             return None, None, None
@@ -61,10 +61,3 @@ def optimize(ir):
 
         index += 1
         yield op1, a1, b1
-
-
-def print_ir(ir):
-    for instruction in ir:
-        op, args = instruction[0], instruction[1:]
-        args = filter(lambda x: x is not None, args)
-        log.info("  %-6s %s" % (op, ", ".join(map(str, args))))

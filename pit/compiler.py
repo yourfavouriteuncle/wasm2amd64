@@ -4,20 +4,31 @@ END = '0b'
 LF = '0a'
 CR = '0d'
 TERM = '0f'
+TYPE_SECTION = '01'
+FUNC_SECTION = '03'
+GLOBAL_SECTION = '06'
+EXPORT_SECTION = '07'
+CODE_SECTION = '0a'
+INT32 = '7f'
+INT32_CONST = '41'
+MUT_CONST = '' # 00
+
+FUNC_TYPE_MAGIC = '60'
+
+FUNC_ID = '' # 00
+GLOB_ID = '03' # 00
 
 
-def parse_header(bytes):
-    if bytes[:4].tostring().hex() != '0061736d':
-        raise ValueError('invalid header')
-
-    return bytes[4:]
+def verify_header(bytes):
+    assert bytes[:4].tobytes().hex() == '0061736d'
 
 
-def parse_version(bytes):
-    if bytes[:4].tostring().hex() != '01000000':
-        raise ValueError('invalid header')
+def verify_version(bytes):
+    assert bytes[:4].tobytes().hex() == '01000000'
 
-    return bytes[4:]
+
+def verify_end(bytes):
+    assert bytes[0].hex() == END
 
 
 def variable(number):
@@ -27,50 +38,232 @@ def variable(number):
 
 
 def parse_int(bytes):
-    return True
-    # slice off the byte (i32)
-    # return the value
-    #
-    # ---
-    # result = 0;
-    # shift = 0;
+    result = 0
+    shift = 0
+    index = 0
 
-    # /* the size in bits of the result variable, e.g., 64 if result's type is int64_t */
-    # size = number of bits in signed integer;
+    size = 32;
 
-    # do {
-    #   byte = next byte in input;
-    #   result |= (low-order 7 bits of byte << shift);
-    #   shift += 7;
-    # } while (high-order bit of byte != 0);
+    while True:
+        byte = int.from_bytes(
+            bytes[index],
+            byteorder='little',
+        )
 
-    # /* sign bit of byte is second high-order bit (0x40) */
-    # if ((shift <size) && (sign bit of byte is set))
-    # /* sign extend */
-    #   result |= (~0 << shift);
-    # ---
-    return (bytes[1], bytes[:2])
+        result |= (byte & 0x7f) << shift
+
+        if not (byte & 0x80):
+            if (
+                (shift < 32) and 
+                (byte & 0x40)
+            ) != 0:
+                return result | (~0 << shift), index + 1
+            return result, index + 1
+
+        index += 1
+        shift += 7
 
 
 def parse_uint(bytes):
-    # result = 0;
-    # shift = 0;
-    # while (true) {
-    # byte = next byte in input;
-    # result |= (low-order 7 bits of byte) << shift;
-    # if (high-order bit of byte == 0)
-    #     break;
-    # shift += 7;
-    # }
-    return True
+    # https://en.wikipedia.org/wiki/LEB128
+    # https://github.com/codenotes/ntcorewithwolfram/blob/master/src/leb128.cpp#L69
+    result = 0
+    shift = 0
+    index = 0
 
+    while True:
+        byte = int.from_bytes(
+            bytes[index],
+            byteorder='little',
+        )
 
-def parse_byte(bytes):
-    return False
+        result |= (byte & 0x7f) << shift
+
+        if not (byte & 0x80):
+            return result, index + 1
+
+        index += 1
+        shift += 7
 
 
 def parse_section(bytes):
-    return False
+    section_id = bytes[0].hex()
+    offset = 1
+
+    import ipdb; ipdb.set_trace()
+    if section_id == GLOBAL_SECTION:
+        section_parser = parse_global_section
+    elif section_id == EXPORT_SECTION:
+        section_parser = parse_export_section
+    elif section_id == TYPE_SECTION:
+        section_parser = parse_type_section
+    elif section_id == FUNC_SECTION:
+        section_parser = parse_func_section
+    elif section_id == CODE_SECTION:
+        section_parser = parse_code_section
+    elif section_id == LF:
+        print('NEW LINE, could be wrong!')
+        return [], offset
+    else:
+        import ipdb; ipdb.set_trace()
+        raise NotImplementedError('sect not glob')
+
+    asm, read = section_parser(bytes[offset:])
+    offset += read
+
+    return asm, offset
+
+
+def parse_code_section(bytes):
+
+
+def parse_func_section(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    len, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = ['section', 'functions']
+    funcs = []
+
+    for _ in range(len):
+        type_id, read = parse_uint(bytes[offset:])
+        funcs.append(type_id)
+        offset += read
+
+    asm.append(funcs)
+    return asm, offset
+
+
+def parse_val_type(bytes):
+    numtype = bytes[0].hex()
+    assert numtype == INT32
+
+    return numtype, 1
+
+
+def parse_result_type(bytes):
+    offset = 0
+
+    len, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    res = []
+
+    for _ in range(len):
+        valtype, read = parse_val_type(bytes[offset:])
+        res.append(valtype)
+        offset += read
+
+    return res, offset
+
+
+
+def parse_func_type(bytes):
+    offset = 0
+
+    magic = bytes[offset].hex()
+    assert magic == FUNC_TYPE_MAGIC
+    offset += 1
+
+    args, o2 = parse_result_type(bytes[offset:])
+    offset += o2
+
+    res, o3 = parse_result_type(bytes[offset:])
+    offset += o3
+
+    return [args, res], offset
+
+
+
+def parse_type_section(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    len, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = ['section', 'types']
+    sigs = []
+
+    for _ in range(len):
+        sig, read = parse_func_type(bytes[offset:])
+        sigs.append(sig)
+        offset += read
+
+    asm.append(sigs)
+    return asm, offset
+
+
+
+def parse_export(bytes):
+    offset = 0
+
+    name, o1 = parse_name(bytes)
+    offset += o1
+
+    desc = bytes[offset].hex()
+    offset += 1
+
+    if desc == FUNC_ID:
+        desc = 'FUNCTIONS'
+    elif desc == GLOB_ID:
+        desc = 'GLOBALS'
+    else:
+        raise NotImplementedError('export desc')
+
+    ref, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    return (name.decode(), desc, str(ref)), offset
+
+
+
+def parse_export_section(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    len, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = ['section', 'exports']
+
+    for _ in range(len):
+        # don't need the export right now
+        (name, desc, ref), read = parse_export(bytes[offset:])
+        # name: GLOBALS[pointer]
+        asm.append([name, desc, ref])
+        offset += read
+
+    return asm, offset
+
+
+def parse_global_section(bytes):
+    offset = 0
+
+    size, o1 = parse_uint(bytes[offset:])
+    offset += o1
+
+    len, o2 = parse_uint(bytes[offset:])
+    offset += o2
+
+    asm = ['section', 'globals']
+    globals = []
+
+    for i in range(len):
+        value, read = parse_global(bytes[offset:])
+        globals.append(value)
+        offset += read
+
+    asm.append(globals)
+    return asm, offset
 
 
 def parse_numeric_op(bytes):
@@ -78,32 +271,80 @@ def parse_numeric_op(bytes):
 
 
 def parse_name(bytes):
-    size = parse_uint(bytes)
-    content = parse_uint(bytes)
+    offset = 0
+
+    len, o1 = parse_uint(bytes)
+    offset += o1
+
+    return bytes[offset:offset + len].tostring(), offset + len
 
 
-def parse_vector(bytes, datatype):
-    if datatype == 'i32':
-        size = parse_int(bytes)
-        content = parse_int(bytes)
-        return (size, content)
-    elif datatype == 'byte':
-        size = parse_byte(bytes)
-        content = parse_byte(bytes)
-        return (size, content)
-    else:
-        raise NotImplementedError()
+def parse_global(bytes):
+    # type
+    if bytes[0].hex() != INT32:
+        raise NotImplementedError('glob int32')
+
+    # mutability
+    if bytes[1].hex() != MUT_CONST:
+        raise NotImplementedError('glob mut const')
+
+    # initializer
+    if bytes[2].hex() != INT32_CONST:
+        raise NotImplementedError('glob init const')
+
+    value, read = parse_int(bytes[3:])
+
+    offset = read + 3
+    verify_end(bytes[offset:])
+
+    return hex(value), offset + 1
 
 
 def wasm_compiler(bytecode):
-    headerless = parse_header(bytecode)
-    data = parse_version(headerless)
+    verify_header(bytecode)
+    verify_version(bytecode[4:])
 
-    while data != None:
-        print(data)
-        break
+    # slice off header and version
+    data = bytecode[8:]
+
+    ir = []
+    #ir.append(["immediate", "rax", 5])
+    #ir.append(["push", "rax", None])
+    #ir.append(["pop", "rax", None])
+
+    while len(data):
+        if res := parse_section(data):
+
+            # don't append empty list
+            if res[0]:
+                ir.append(res[0])
+
+            data = data[res[1]:]
+            continue
+
+    # add ret at the end of execution
+    ir.append(["ret", None, None])
+
+    return ir
 
 
+def disassemble(function):
+    """Decompile x86_64 block"""
+
+    def hexbytes(raw):
+        return "".join("%02x " % b for b in raw)
+
+    import capstone
+
+    out = ""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
+
+    for i in md.disasm(function.raw, function.address):
+        out += "0x%x %-15s%s %s\n" % (i.address, hexbytes(i.bytes), i.mnemonic, i.op_str)
+        if i.mnemonic == "ret":
+            break
+
+    return out
 #def decode(byte):
 #    opname = dis.opname[byte]
 #
