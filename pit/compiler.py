@@ -133,8 +133,7 @@ def parse_section(bytes):
     elif section_id == CODE_SECTION:
         section_parser = parse_code_section
     else:
-        import ipdb; ipdb.set_trace()
-        raise NotImplementedError('sect not glob')
+        raise NotImplementedError('unknown section')
 
     asm, read = section_parser(bytes[offset:])
     offset += read
@@ -187,8 +186,7 @@ def parse_expression(bytes, values):
         return asm, offset
 
     else:
-        import ipdb; ipdb.set_trace()
-        raise NotImplementedError('unknown')
+        raise NotImplementedError('unknown expr')
 
 
 def parse_code(bytes):
@@ -457,60 +455,3 @@ def disassemble(function):
             break
 
     return out
-#def decode(byte):
-#    opname = dis.opname[byte]
-#
-#    if opname.startswith(("UNARY", "BINARY", "INPLACE", "RETURN")):
-#        argument = None
-#        self.fetch()
-#    else:
-#        argument = self.fetch()
-#
-#    return opname, argument
-
-#while self.index < len(self.bytecode):
-#    op, arg = self.decode()
-
-#    if op == "LOAD_FAST":
-#        yield "push", self.variable(arg), None
-
-#    elif op == "STORE_FAST":
-#        yield "pop", "rax", None
-#        yield "mov", self.variable(arg), "rax"
-
-#    elif op == "LOAD_CONST":
-#        value = self.constants[arg]
-#        if value is None:
-#            value = 0
-#        yield "immediate", "rax", value
-#        yield "push", "rax", None
-
-#    elif op == "BINARY_MULTIPLY":
-#        yield "pop", "rax", None
-#        yield "pop", "rbx", None
-#        yield "imul", "rax", "rbx"
-#        yield "push", "rax", None
-
-#    elif op in ("BINARY_ADD", "INPLACE_ADD"):
-#        yield "pop", "rax", None
-#        yield "pop", "rbx", None
-#        yield "add", "rax", "rbx"
-#        yield "push", "rax", None
-
-#    elif op in ("BINARY_SUBTRACT", "INPLACE_SUBTRACT"):
-#        yield "pop", "rbx", None
-#        yield "pop", "rax", None
-#        yield "sub", "rax", "rbx"
-#        yield "push", "rax", None
-
-#    elif op == "UNARY_NEGATIVE":
-#        yield "pop", "rax", None
-#        yield "neg", "rax", None
-#        yield "push", "rax", None
-
-#    elif op == "RETURN_VALUE":
-#        yield "pop", "rax", None
-#        yield "ret", None, None
-#    else:
-#        raise NotImplementedError(op)
-
