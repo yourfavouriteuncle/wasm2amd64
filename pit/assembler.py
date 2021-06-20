@@ -3,7 +3,6 @@ import ctypes
 
 
 class Assembler():
-    """An amd64 assembler."""
 
     def __init__(self, size):
         self.block = memory.create_block(size)
@@ -56,17 +55,17 @@ class Assembler():
     def add(self, a, b):
         self.emit(0x48, 0x01, 0xc0 | self.registers(b, a))
 
+    #def idiv(self, a, _):
+    #    self.emit(0x48, 0xf7, 0xc0 | self.registers(a))
+
     def sub(self, a, b):
         self.emit(0x48, 0x29, 0xc0 | self.registers(b, a))
 
-    def neg(self, a, _):
-        self.emit(0x48, 0xf7, 0xd8 | self.registers(a))
+    #def neg(self, a, _):
+    #    self.emit(0x48, 0xf7, 0xd8 | self.registers(a))
 
     def mov(self, a, b):
         self.emit(0x48, 0x89, 0xc0 | self.registers(b, a))
 
     def immediate(self, a, number):
         self.emit(0x48, 0xb8 | self.registers(a), *self.little_endian(number))
-
-    def section(self, name, values):
-        self.constants[name] = values

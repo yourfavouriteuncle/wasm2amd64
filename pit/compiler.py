@@ -15,7 +15,10 @@ CODE_SECTION = '0a'
 INT32 = '7f'
 
 # expressions
+INT32_ADD = '6a'
 INT32_MUL = '6c'
+INT32_SUB = '6b'
+INT32_DIV_S = '6d'
 INT32_CONST = '41'
 FUNC_CALL = '10'
 
@@ -42,12 +45,6 @@ def log_lookup():
     log.info('---')
 
 
-def get_register(num):
-    order = ('rdi', 'rsi', 'rdx', 'rcx')
-    assert num < len(order)
-    return order[num]
-
-
 def verify_header(bytes):
     assert bytes[:4].tobytes().hex() == '0061736d'
 
@@ -64,6 +61,12 @@ def variable(number):
     # AMD64 argument passing order for our purposes.
     order = ("rdi", "rsi", "rdx", "rcx")
     return order[number]
+
+
+def register(num):
+    order = ('rdi', 'rsi', 'rdx', 'rcx')
+    assert num < len(order)
+    return order[num]
 
 
 def parse_int(bytes):
@@ -139,7 +142,7 @@ def parse_section(bytes):
     return asm, offset
 
 
-def parse_expression(bytes, values, calls):
+def parse_expression(bytes, values):
     offset = 0
 
     expr_type = bytes[offset].hex()
@@ -147,11 +150,11 @@ def parse_expression(bytes, values, calls):
 
     if expr_type == FUNC_CALL:
         raise NotImplementedError('no func call')
+
     elif expr_type == INT32_CONST:
         value, read = parse_int(bytes[offset:])
         offset += read
         asm = []
-        reg = get_register(calls)
         asm.append(['immediate', 'rax', value])
         asm.append(['push', 'rax', None])
 
@@ -164,6 +167,25 @@ def parse_expression(bytes, values, calls):
         asm.append(['push', 'rax', None])
 
         return asm, offset
+
+    elif expr_type == INT32_SUB:
+        asm = []
+        asm.append(['pop', 'rbx', None])
+        asm.append(['pop', 'rax', None])
+        asm.append(['sub', 'rax', 'rbx'])
+        asm.append(['push', 'rax', None])
+
+        return asm, offset
+
+    elif expr_type == INT32_ADD:
+        asm = []
+        asm.append(['pop', 'rax', None])
+        asm.append(['pop', 'rbx', None])
+        asm.append(['add', 'rax', 'rbx'])
+        asm.append(['push', 'rax', None])
+
+        return asm, offset
+
     else:
         import ipdb; ipdb.set_trace()
         raise NotImplementedError('unknown')
@@ -186,13 +208,10 @@ def parse_code(bytes):
         offset += read
         values.append(value)
 
-    calls = 0
-
     while bytes[offset].hex() != END:
-        ir, read = parse_expression(bytes[offset:], values, calls)
+        ir, read = parse_expression(bytes[offset:], values)
         offset += read
         asm.extend(ir)
-        calls += 1
 
     offset += 1
 
