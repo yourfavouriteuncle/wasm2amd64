@@ -85,6 +85,7 @@ def jit(ast):
 
     log.info('---')
     log.info('cleaning memory up')
+
     memory.destroy_block(asm.block, memory.PAGESIZE)
     del asm.block
     del native
