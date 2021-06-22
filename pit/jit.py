@@ -95,6 +95,7 @@ if __name__ == '__main__':
     usage = """Invalid call.
 
 USAGE: python jit.py file.wasm
+OR: ./jit.py file.wasm
     """
 
     if len(sys.argv) != 2:
