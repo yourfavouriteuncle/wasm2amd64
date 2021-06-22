@@ -430,8 +430,9 @@ def wasm_compiler(bytecode):
         if len(data) == 1 and data[0].hex() == LF:
             break
 
-    # add ret at the end of execution
-    ir.append(['pop', 'rax', None])
+    if len(ir) > 1:
+        ir.append(['pop', 'rax', None])
+
     ir.append(['ret', None, None])
     log_lookup()
 
