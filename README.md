@@ -9,3 +9,4 @@ It works by parsin the binary format of the WebAssembly file and translating it 
   - It supports addition, subtraction and multiplication
   - It parses the Global, Export, Type, Function, and Code sections
   - It doesn't support function calling
+  - It performs peephole optimization on the generated assembly code
